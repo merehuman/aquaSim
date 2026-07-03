@@ -1,10 +1,10 @@
-import './pond.css'
+import './pond.css';
 import { fetchScenarios, fetchSpecies } from './api';
 import { useRef } from 'react';
 import { useEffect } from 'react';
 import { useState } from 'react';
 import { loadPond } from "./wasm/loadPond";
-import { Tooltip, Line, Area, Bar, ComposedChart, LineChart, XAxis, YAxis, Legend, CartesianGrid } from 'recharts';
+import { Tooltip, Line, Area, ComposedChart, XAxis, YAxis, Legend } from 'recharts';
 
 //----------------------------------------------------------
 // Type definitions for simulation data
@@ -280,7 +280,11 @@ function PondSim() {
                 <div>Description: {description.current}</div>
             </div>
             {/* <h3 style={{ fontSize: '20px', textAlign: 'left', color: 'var(--text-h)' }}>Species Guide</h3> */}
-            <FieldGuide species={species} />
+            {speciesLoading ? (
+                <div>Loading species...</div>
+            ) : (
+                <FieldGuide species={species} />
+            )}
         </div>
 
         
