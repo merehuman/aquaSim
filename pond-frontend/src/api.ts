@@ -1,4 +1,5 @@
-const API = "https://eco-explore.ddev.site";
+//const API = "https://eco-explore.ddev.site";
+const API = import.meta.env.VITE_API_URL;
 
 export async function fetchSpecies() {
   const res = await fetch(`${API}/jsonapi/node/species`);
