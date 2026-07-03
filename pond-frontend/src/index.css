@@ -1,0 +1,113 @@
+:root {
+  --text: #636b2f;
+  --text-h: #3d4127;
+  --bg: #fff;
+  --border: #d4de95;
+  --code-bg: #baco95;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 18px/145% var(--mono);
+  letter-spacing: 0.18px;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  @media (max-width: 1024px) {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #d4de95;
+    --text-h: #f3f4f6;
+    --text-clicked: #939a69;
+    --bg: #3d4127;
+    --border: #636b2f;
+    --code-bg: #1f2028;
+  }
+
+  #social .button-icon {
+    filter: invert(1) brightness(2);
+  }
+
+  button {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  button:hover {
+    color: var(--text-clicked);
+  }
+}
+
+#root {
+  /* width: 1126px; */
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  /* border-inline: 1px solid var(--border); */
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2 {
+  font-family: var(--mono);
+  font-weight: 500;
+  color: var(--text-h);
+  line-height: 100%;
+}
+
+h1 {
+  font-size: 48px;
+  letter-spacing: -1.68px;
+  margin: 20px 0;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+    margin: 20px 0;
+  }
+}
+h2 {
+  font-size: 36px;
+  line-height: 110%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+p {
+  font-size: 12px;
+  line-height: 110%;
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 4px;
+  color: var(--text-h);
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+}
