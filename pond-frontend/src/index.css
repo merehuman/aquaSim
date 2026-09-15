@@ -23,7 +23,7 @@
   @media (max-width: 1024px) {
     font-size: 16px;
   }
-}
+
   #social .button-icon {
     filter: invert(1) brightness(2);
   }
