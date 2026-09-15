@@ -1,9 +1,10 @@
 :root {
-  --text: #636b2f;
-  --text-h: #3d4127;
-  --bg: #fff;
-  --border: #d4de95;
-  --code-bg: #baco95;
+  --text: #d4de95;
+  --text-h: #f3f4f6;
+  --text-clicked: #939a69;
+  --bg: #3d4127;
+  --border: #636b2f;
+  --code-bg: #1f2028;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -23,17 +24,6 @@
     font-size: 16px;
   }
 }
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #d4de95;
-    --text-h: #f3f4f6;
-    --text-clicked: #939a69;
-    --bg: #3d4127;
-    --border: #636b2f;
-    --code-bg: #1f2028;
-  }
-
   #social .button-icon {
     filter: invert(1) brightness(2);
   }
