@@ -468,7 +468,7 @@ function PondSim() {
                         <Tooltip />
                         <Legend />
                         {/* <CartesianGrid strokeDasharray="3 3" stroke="#aed73e" /> */}
-                        <Area yAxisId="water" type="monotone" dot={false} isAnimationActive={false} dataKey="water" fill="#8ab9ff00" stroke="#0046d1" />
+                        <Area yAxisId="water" type="monotone" dot={false} isAnimationActive={false} dataKey="water" fill="#8ab9ff" fillOpacity={0.35} stroke="#0046d1" />
                         <Line yAxisId="pop" type="monotone" dot={false} isAnimationActive={false} dataKey="algae" fill="#00941e" stroke="#00941e" />
                         <Line yAxisId="pop" type="monotone" dot={false} isAnimationActive={false} dataKey="invertebrates" fill="#6696a2" stroke="#6696a2" />
                         <Area yAxisId="pop" type="monotone" dot={false} isAnimationActive={false} dataKey="nutrients" fill="#7fa341" stroke="#7fa341" opacity={0.5} />
