@@ -2,9 +2,12 @@ import './pond.css';
 import { fetchScenarios, fetchSpecies } from './api';
 import { useRef } from 'react';
 import { useEffect } from 'react';
+import { useMemo } from 'react';
 import { useState } from 'react';
 import { loadPond } from "./wasm/loadPond";
-import { Tooltip, Line, Area, ComposedChart, XAxis, YAxis, Legend } from 'recharts';
+// Legend is no longer imported: with one series per panel the panel heading
+// carries the name, so the old chart's <Legend /> is redundant.
+import { Tooltip, Line, Area, ComposedChart, XAxis, YAxis, ReferenceLine } from 'recharts';
 
 //----------------------------------------------------------
 // Type definitions for simulation data
@@ -16,6 +19,233 @@ type Sample = {
     nutrients: number;
     water: number;
 };
+
+// A Sample plus the water-relative ratios the chart actually plots.
+// Ratios are null while the pool is essentially dry (see waterRelative).
+type ChartPoint = Sample & {
+    algaePerWater: number | null;
+    invertebratesPerWater: number | null;
+    nutrientsPerWater: number | null;
+};
+
+
+//----------------------------------------------------------
+// Water-relative ratios for the left chart axis
+//
+// The raw series are in three different units (g/m^2, ind/m^2, mg/L), so
+// plotting them on one shared numeric axis makes that axis meaningless.
+// Dividing each by the relative water level gives a dimensionless
+// "amount per unit of remaining water" figure: as the pool dries, the same
+// standing stock is concentrated into less water, so the ratio rises.
+//
+// Direction of the ratio: value / water ("amount per unit water").
+// To flip to the reciprocal reading ("water per unit amount"), change the
+// single return below to `water / value` (and guard against value === 0).
+//
+// Water reaches 0 at the end of the hydroperiod, so anything below
+// minWaterForRatio is treated as dry and emits null; Recharts then draws a
+// gap instead of a spike towards infinity.
+//----------------------------------------------------------
+const minWaterForRatio = 0.05;
+
+function waterRelative(value: number, water: number): number | null {
+    if (!Number.isFinite(value) || !Number.isFinite(water) || water < minWaterForRatio) {
+        return null;
+    }
+    return value / water;
+}
+
+function toChartPoint(sample: Sample): ChartPoint {
+    return {
+        ...sample,
+        algaePerWater: waterRelative(sample.algae, sample.water),
+        invertebratesPerWater: waterRelative(sample.invertebrates, sample.water),
+        nutrientsPerWater: waterRelative(sample.nutrients, sample.water)
+    };
+}
+
+// Ratios are unitless but can be non-integer, so trim the decimals.
+// Both formatters are now shared by the raw and per-water panels: raw values
+// are non-integer too, and every panel wants the same tick/tooltip precision.
+// Two decimals rather than one, because the panels auto-scale in real units
+// and a small axis (nutrients in mg/L) can put a tick at 1.65, which one
+// decimal would mislabel as 1.6.
+const formatRatioTick = (value: number) =>
+    Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+
+const formatRatioValue = (value: unknown) =>
+    typeof value === 'number' ? value.toFixed(2) : String(value ?? '');
+
+// Superseded by the small multiples below: each panel now has its own y-axis in
+// its own units and auto-scales to its own series, so there is no shared scale
+// left to cap and nothing gets clipped.
+//
+// // As the pool empties, nutrients per unit water climb steeply (past 390 in the
+// // enriched scenario) and flatten algae and invertebrates into the baseline.
+// // Capping the visible axis keeps the normal 0-40 range readable; the nutrient
+// // curve is clipped at the top rather than rescaling everything else away.
+// const ratioAxisMax = 40;
+
+//----------------------------------------------------------
+// Small-multiple chart panels
+//
+// One quantity per panel, stacked over a single shared day axis.
+// Each panel keeps its own y-axis in its own real units and
+// auto-scales to its own series, so nothing is flattened against
+// the floor or clipped at the ceiling by a shared scale.
+//
+// Every panel is given the same syncId, which is what makes the
+// stack readable: hovering any day draws the cursor and tooltip
+// in all four panels at once.
+//
+// Alignment is the pitfall. Recharts sizes a y-axis from its tick
+// text unless told otherwise, and a wider axis eats into the plot
+// area, so a panel whose ticks read "393" would be narrower than
+// one reading "0.5" and the day axes would drift apart. Every
+// panel therefore pins YAxis width to panelAxisWidth and reuses
+// the same chart width and margin.
+//----------------------------------------------------------
+const panelWidth = 800;
+const panelAxisWidth = 64;
+const panelMargin = { top: 6, right: 22, bottom: 0, left: 6 };
+const panelHeight = 152;        // one biological series
+const waterPanelHeight = 120;   // shorter: water is bounded 0..1
+const dayAxisHeight = 28;       // day labels, on the bottom panel only
+const panelSyncId = 'pond-day';
+const axisTextColor = '#d4de95';
+const axisLineColor = '#636b2f';
+
+type ChartMode = 'raw' | 'perWater';
+
+type PanelSeries = {
+    dataKey: keyof ChartPoint;
+    heading: string;
+    tooltipName: string;
+    color: string;
+    shape: 'line' | 'area';
+    domain: [number | 'auto', number | 'auto'];
+    tickCount: number;
+};
+
+// The heading is the only label a panel gets, so it carries the unit and
+// changes with the mode: it must never be ambiguous which view is on screen.
+// tooltipName is the short form, because four synced tooltips at once would
+// otherwise cover the neighbouring panels.
+const standingStockSeries: PanelSeries[] = [
+    { dataKey: 'algae', heading: 'Algae (g/m²)', tooltipName: 'Algae (g/m²)', color: '#6b8852', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 },
+    { dataKey: 'invertebrates', heading: 'Invertebrates (ind/m²)', tooltipName: 'Invertebrates (ind/m²)', color: '#653007', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 },
+    { dataKey: 'nutrients', heading: 'Nutrients (mg/L)', tooltipName: 'Nutrients (mg/L)', color: '#251303', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 }
+];
+
+const perWaterSeries: PanelSeries[] = [
+    { dataKey: 'algaePerWater', heading: 'Algae per unit water (g/m² per relative depth)', tooltipName: 'Algae (g/m² per depth)', color: '#15A100', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 },
+    { dataKey: 'invertebratesPerWater', heading: 'Invertebrates per unit water (ind/m² per relative depth)', tooltipName: 'Invertebrates (ind/m² per depth)', color: '#C73E00', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 },
+    { dataKey: 'nutrientsPerWater', heading: 'Nutrients per unit water (mg/L per relative depth)', tooltipName: 'Nutrients (mg/L per depth)', color: '#D8E6C3', shape: 'area', domain: ['auto', 'auto'], tickCount: 5 }
+];
+
+// Water is the forcing function, not a mode-dependent quantity, so this panel
+// is the same in both views and always sits at the bottom of the stack. Its
+// domain is the model's own 0..1 range rather than an auto fit, and three ticks
+// keep it to the round values 0, 0.5 and 1.
+const waterPanelSeries: PanelSeries = {
+    dataKey: 'water',
+    heading: 'Water level (relative depth, 1 = full)',
+    tooltipName: 'Water level',
+    color: '#BFEDFF',
+    shape: 'area',
+    domain: [0, 1],
+    tickCount: 3
+};
+
+const chartModeLabels: Record<ChartMode, string> = {
+    raw: 'Standing stock',
+    perWater: 'Per unit water'
+};
+
+type ChartPanelProps = {
+    series: PanelSeries;
+    data: (Sample | ChartPoint)[];
+    height: number;
+    dayDomain: [number, number];
+    dayTicks: number[];
+    showDayAxis: boolean;
+    dryDay: number | null;
+};
+
+function ChartPanel({ series, data, height, dayDomain, dayTicks, showDayAxis, dryDay }: ChartPanelProps) {
+    return (
+        <div className="chart-panel">
+            <div className="chart-panel-heading" style={{ color: series.color }}>{series.heading}</div>
+            <ComposedChart
+                syncId={panelSyncId}
+                width={panelWidth}
+                height={height + (showDayAxis ? dayAxisHeight : 0)}
+                data={data}
+                margin={panelMargin}
+            >
+                <XAxis
+                    dataKey="day"
+                    type="number"
+                    domain={dayDomain}
+                    ticks={dayTicks}
+                    height={showDayAxis ? dayAxisHeight : 6}
+                    tick={showDayAxis ? { fill: axisTextColor, fontSize: 11 } : false}
+                    tickLine={showDayAxis}
+                    stroke={axisLineColor}
+                />
+                <YAxis
+                    width={panelAxisWidth}
+                    domain={series.domain}
+                    tickCount={series.tickCount}
+                    interval={0}
+                    tickFormatter={formatRatioTick}
+                    tick={{ fill: axisTextColor, fontSize: 11 }}
+                    stroke={axisLineColor}
+                />
+                <Tooltip
+                    formatter={formatRatioValue}
+                    labelFormatter={(day) => `Day ${day}`}
+                    contentStyle={{ background: '#3d4127', border: `1px solid ${axisLineColor}`, borderRadius: 6, fontSize: 12 }}
+                    labelStyle={{ color: axisTextColor }}
+                    itemStyle={{ color: axisTextColor }}
+                />
+                {dryDay !== null && (
+                    <ReferenceLine
+                        x={dryDay}
+                        stroke="#BFEDFF"
+                        strokeDasharray="4 4"
+                        label={{ value: `pool dry, day ${dryDay}`, position: 'insideTopLeft', fill: axisTextColor, fontSize: 10 }}
+                    />
+                )}
+                {series.shape === 'area' ? (
+                    <Area
+                        type="monotone"
+                        dot={false}
+                        isAnimationActive={false}
+                        connectNulls={false}
+                        dataKey={series.dataKey}
+                        name={series.tooltipName}
+                        fill={series.color}
+                        fillOpacity={0.35}
+                        stroke={series.color}
+                    />
+                ) : (
+                    <Line
+                        type="monotone"
+                        dot={false}
+                        isAnimationActive={false}
+                        connectNulls={false}
+                        dataKey={series.dataKey}
+                        name={series.tooltipName}
+                        fill={series.color}
+                        stroke={series.color}
+                    />
+                )}
+            </ComposedChart>
+        </div>
+    );
+}
+
 
 type Species = {
     id: string;
@@ -194,6 +424,9 @@ function PondSim() {
     const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
     const [species, setSpecies] = useState<Species[]>([]);
     const [speciesLoading, setSpeciesLoading] = useState(false);
+    // Which view the small multiples show. Raw standing stock is the default
+    // because it is the true model output.
+    const [chartMode, setChartMode] = useState<ChartMode>('raw');
     const duration_days = useRef<any>(pondBaseline.meta.duration_days);
     const timestep_days = useRef<any>(pondBaseline.meta.timestep_days);
 
@@ -391,6 +624,28 @@ function PondSim() {
 
     const latestSample = history.length > 0 ? history[history.length - 1] : null;
 
+    // history always keeps the raw model output; the per-water ratios are
+    // derived for the chart only, and only while that mode is showing. Raw
+    // mode needs no dry-pool guard, so it plots the samples untouched.
+    const chartData = useMemo<(Sample | ChartPoint)[]>(
+        () => (chartMode === 'perWater' ? history.map(toChartPoint) : history),
+        [history, chartMode]
+    );
+
+    // Day the pool goes dry, for the reference line. Normally that is the first
+    // sample whose water level has reached 0. The model clock stops the moment
+    // the pool empties, though, so a pool that empties part-way through a day
+    // never logs a zero sample; in that case ask the model directly, exactly as
+    // the status readout does, and mark the last day it recorded. Slow drying
+    // can leave water in the pool all run, and then there is no line to draw.
+    const modelIsDry = sim.current ? sim.current.getWaterVolume() <= 0 : false;
+    const dryDay = history.find((s) => s.water <= 0)?.day
+        ?? (modelIsDry && latestSample ? latestSample.day : null);
+
+    const dayDomain: [number, number] = [0, duration_days.current];
+    const dayTicks = Array.from({ length: Math.floor(duration_days.current / 10 + 1) }, (_, i) => i * 10);
+    const panels = [...(chartMode === 'perWater' ? perWaterSeries : standingStockSeries), waterPanelSeries];
+
     return (
     <div className="app-shell">
         <SiteHeader />
@@ -460,19 +715,81 @@ function PondSim() {
                         <div>Day: {latestSample ? latestSample.day : 0}</div>
                     )}
                 </section>
-                <div className="chart-frame">
-                    <ComposedChart width={800} height={500} data={history} >
+                {/*
+                    Kept for reference: the original single overlaid ComposedChart, all four
+                    series on two shared y-axes. (The CartesianGrid line below was already
+                    commented out in that version; its comment markers are stripped here so
+                    they do not close this block early.)
+
+                    <ComposedChart width={800} height={500} data={chartData} >
                         <XAxis dataKey="day" domain={[0, duration_days.current]} ticks={Array.from({ length: Math.floor(duration_days.current / 10 + 1) }, (_, i) => i * 10)} niceTicks="none" />
-                        <YAxis yAxisId="pop" />
-                        <YAxis yAxisId="water" orientation="right" domain={[0, 1]} />
-                        <Tooltip />
+                        <YAxis yAxisId="pop" domain={[0, ratioAxisMax]} allowDataOverflow tickFormatter={formatRatioTick} />
+                        <YAxis yAxisId="water" orientation="right" domain={[0, 1]} stroke="#BFEDFF" opacity={0.5} />
+                        <Tooltip formatter={formatRatioValue} />
                         <Legend />
-                        {/* <CartesianGrid strokeDasharray="3 3" stroke="#aed73e" /> */}
-                        <Area yAxisId="water" type="monotone" dot={false} isAnimationActive={false} dataKey="water" fill="#8ab9ff" fillOpacity={0.35} stroke="#0046d1" />
-                        <Line yAxisId="pop" type="monotone" dot={false} isAnimationActive={false} dataKey="algae" fill="#00941e" stroke="#00941e" />
-                        <Line yAxisId="pop" type="monotone" dot={false} isAnimationActive={false} dataKey="invertebrates" fill="#6696a2" stroke="#6696a2" />
-                        <Area yAxisId="pop" type="monotone" dot={false} isAnimationActive={false} dataKey="nutrients" fill="#7fa341" stroke="#7fa341" opacity={0.5} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#aed73e" />
+                        <Area yAxisId="water" type="monotone" dot={false} isAnimationActive={false} dataKey="water" name="Water Level" fill="#BFEDFF" fillOpacity={0.25} stroke="#BFEDFF" />
+                        <Line yAxisId="pop" type="monotone" dot={false} isAnimationActive={false} dataKey="algaePerWater" name="Algae" fill="#15A100" stroke="#15A100" />
+                        <Line yAxisId="pop" type="monotone" dot={false} isAnimationActive={false} dataKey="invertebratesPerWater" name="Invertebrates" fill="#C73E00" stroke="#C73E00" />
+                        <Area yAxisId="pop" type="monotone" dot={false} isAnimationActive={false} dataKey="nutrientsPerWater" name="Nutrients" fill="#D8E6C3" stroke="#D8E6C3" fillOpacity={0.5} />
                     </ComposedChart>
+                */}
+
+                <div className="chart-mode" role="group" aria-label="Chart view mode">
+                    <span className="chart-mode-label">View:</span>
+                    {(Object.keys(chartModeLabels) as ChartMode[]).map((mode) => (
+                        <button
+                            key={mode}
+                            type="button"
+                            className={mode === chartMode ? 'chart-mode-button is-active' : 'chart-mode-button'}
+                            aria-pressed={mode === chartMode}
+                            onClick={() => setChartMode(mode)}
+                        >
+                            {chartModeLabels[mode]}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="chart-frame">
+                    {panels.map((series, index) => (
+                        <ChartPanel
+                            key={series.dataKey}
+                            series={series}
+                            data={chartData}
+                            height={series === waterPanelSeries ? waterPanelHeight : panelHeight}
+                            dayDomain={dayDomain}
+                            dayTicks={dayTicks}
+                            showDayAxis={index === panels.length - 1}
+                            dryDay={dryDay}
+                        />
+                    ))}
+                    <div className="chart-axis-label">Day of hydroperiod</div>
+                </div>
+
+                <div className="chart-caption">
+                    <p> <b>How to understand this simulation: <br></br></b>
+                        The above simulation has four panels, one quantity each over a shared day axis. 
+                        If you hover any panel on a given day, the y-axes of all panels will show the values for
+                        the respective elements of the vernal pool ecosystem. Each panel is independent, 
+                        but the day axis is shared, so the timing of events lines up across panels. 
+                        The y-axes are in their own units, so vertical positions are only comparable within a panel.
+                    </p>
+                    {/* <p> <b>What to look out for within each simulation:</b>
+                        Algae and invertebrates cycle out of phase, with algae
+                        leading and invertebrates following about a quarter of a period later. Nutrients
+                        dip sharply during an algae bloom, as uptake outruns recycling, then recover
+                        after the algae crash. With these parameter values the cycles do not continue
+                        forever: the system slowly damps toward a coexistence equilibrium. Spiking the
+                        nutrient input instead produces eutrophication, a rapid algae bloom followed by
+                        a crash, standing in for agricultural runoff or fertiliser pollution.
+                    </p> */}
+                    <p>
+                        <strong>Standing stock</strong> plots the model output as it is, in g/m², ind/m²
+                        and mg/L. <strong>Per unit water</strong> divides each biological series by the
+                        relative water level, showing how the same standing stock is concentrated into a
+                        shrinking pool; once the pool is essentially dry the ratio stops being meaningful,
+                        so those lines break off rather than running away upward. 
+                    </p>
                 </div>
             </section>
         </main>
