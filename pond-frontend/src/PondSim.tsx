@@ -138,9 +138,9 @@ const standingStockSeries: PanelSeries[] = [
 ];
 
 const perWaterSeries: PanelSeries[] = [
-    { dataKey: 'algaePerWater', heading: 'Algae per unit water (g/m² per relative depth)', tooltipName: 'Algae (g/m² per depth)', color: '#15A100', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 },
-    { dataKey: 'invertebratesPerWater', heading: 'Invertebrates per unit water (ind/m² per relative depth)', tooltipName: 'Invertebrates (ind/m² per depth)', color: '#C73E00', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 },
-    { dataKey: 'nutrientsPerWater', heading: 'Nutrients per unit water (mg/L per relative depth)', tooltipName: 'Nutrients (mg/L per depth)', color: '#D8E6C3', shape: 'area', domain: ['auto', 'auto'], tickCount: 5 }
+    { dataKey: 'algaePerWater', heading: 'Algae per unit water (g/m² per relative depth)', tooltipName: 'Algae (g/m² per depth)', color: '#6b8852', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 },
+    { dataKey: 'invertebratesPerWater', heading: 'Invertebrates per unit water (ind/m² per relative depth)', tooltipName: 'Invertebrates (ind/m² per depth)', color: '#653007', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 },
+    { dataKey: 'nutrientsPerWater', heading: 'Nutrients per unit water (mg/L per relative depth)', tooltipName: 'Nutrients (mg/L per depth)', color: '#251303', shape: 'line', domain: ['auto', 'auto'], tickCount: 5 }
 ];
 
 // Water is the forcing function, not a mode-dependent quantity, so this panel
